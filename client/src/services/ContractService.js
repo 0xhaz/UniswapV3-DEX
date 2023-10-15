@@ -47,7 +47,7 @@ export const getToken = symbol => {
   const abi = symbol === "WETH" ? WethArtifact.abi : ERC20ABI;
 
   return new ethers.Contract(
-    tokenInfos[symbol].address,
+    tokenInfos[symbol]?.address,
     abi,
     AccountService.getProvider()
   );

@@ -14,13 +14,13 @@ const useDecimals = () => {
     if (symbol === null) {
       return _setInputDecimals(null);
     }
-    _setInputDecimals(tokenInfos[symbol].decimals);
+    _setInputDecimals(tokenInfos[symbol]?.decimals);
   };
   const setOutputDecimals = symbol => {
     if (symbol === null) {
       return _setOutputDecimals(null);
     }
-    _setOutputDecimals(tokenInfos[symbol].decimals);
+    _setOutputDecimals(tokenInfos[symbol]?.decimals);
   };
 
   return { inputDecimals, outputDecimals, setDecimals };

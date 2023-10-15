@@ -1,6 +1,6 @@
-import { tokenInfos } from "../constants";
-import Utils from "../utils/Utils";
+import { tokenInfos } from "../constants/index";
 import { getQuoter } from "./ContractService";
+import Utils from "../utils/Utils";
 
 export const getQuote = async (inputAmount, inSymbol, outSymbol) => {
   if (Utils.isSymbolsEthAndWeth(inSymbol, outSymbol)) {
