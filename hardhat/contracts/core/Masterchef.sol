@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "../interface/IERC20.sol";
 import "../token/RToken.sol";
+import "../library/SafeMath.sol";
 
 contract MasterChefV1 is Ownable, ReentrancyGuard {
-    using Math for uint256;
+    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     /**
@@ -34,6 +34,7 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
     address public devAddress;
     uint256 public rewardTokenPerBlock;
 
+    /// @notice Id of pool
     mapping(uint256 => mapping(address => UserInfo)) public userInfo;
 
     PoolInfo[] public poolInfo;
@@ -47,8 +48,7 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
         uint256 _rewardTokenPerBlock,
         uint256 _startBlock,
         uint256 _bonusMultiplier
-    ) public {
-        rewardToken = _rewardToken;
+    ) Ownable(msg.sender) {
         devAddress = _devAddress;
         rewardTokenPerBlock = _rewardTokenPerBlock;
         startBlock = _startBlock;
@@ -63,5 +63,24 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
             })
         );
         totalAllocation = 10000;
+    }
+
+    function poolLength() external view returns (uint256) {
+        return poolInfo.length;
+    }
+
+    function getPoolInfo(uint256 _pid) public view returns (PoolInfo memory) {
+        return poolInfo[_pid];
+    }
+
+    function getMultiplier(
+        uint256 _from,
+        uint256 _to
+    ) public view returns (uint256) {
+        return _to.sub(_from).mul(BONUS_MULTIPLIER);
+    }
+
+    function updateMultiplier(uint256 _multiplierNumber) public onlyOwner {
+        BONUS_MULTIPLIER = _multiplierNumber;
     }
 }
