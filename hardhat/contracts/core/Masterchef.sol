@@ -119,6 +119,32 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
         pool.lastRewardBlock = block.number;
     }
 
+    function massUpdatePools() public {
+        uint256 length = s_poolInfo.length;
+        for (uint256 pid = 0; pid < length; pid++) {
+            updatePool(pid);
+        }
+    }
+
+    function setPool(
+        uint256 _pid,
+        uint256 _allocPoint,
+        bool _withUpdate
+    ) public onlyOwner {
+        if (_withUpdate) {
+            massUpdatePools();
+        }
+
+        uint256 prevAllocPoint = s_poolInfo[_pid].allocPoint;
+        poolInfo[_pid].allocPoint = _allocPoint;
+        if (prevAllocPoint != _allocPoint) {
+            s_totalAllocation = s_totalAllocation.sub(prevAllocPoint).add(
+                _allocPoint
+            );
+            _updateStakingPool();
+        }
+    }
+
     function poolLength() external view returns (uint256) {
         return s_poolInfo.length;
     }

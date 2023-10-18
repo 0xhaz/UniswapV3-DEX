@@ -20,8 +20,8 @@ contract RToken is ERC20, ERC20Burnable, AccessControl {
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
     constructor() ERC20("Reward Token", "RToken") {
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(MANAGER_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(MANAGER_ROLE, _msgSender());
     }
 
     function mint(address _to, uint256 amount) external {
