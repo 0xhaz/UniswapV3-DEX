@@ -42,6 +42,14 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
     uint256 public startBlock;
     uint256 public BONUS_MULTIPLIER;
 
+    event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
+    event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
+    event EmergencyWithdraw(
+        address indexed user,
+        uint256 indexed pid,
+        uint256 amount
+    );
+
     modifier validatePool(uint256 _pid) {
         require(_pid < s_poolInfo.length, "MasterChef: pool exists");
         _;
@@ -145,6 +153,107 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
         }
     }
 
+    function stakePool(
+        uint256 _pid,
+        uint256 _amount
+    ) public validatePool(_pid) {
+        PoolInfo storage pool = s_poolInfo[_pid];
+        UserInfo storage user = s_userInfo[_pid][msg.sender];
+        updatePool(_pid);
+
+        if (user.amount > 0) {
+            uint256 pending = user
+                .amount
+                .mul(pool.rewardTokenPerShare)
+                .div(1e12)
+                .sub(user.pendingReward);
+            if (pending > 0) {
+                _safeTransfer(msg.sender, pending);
+            }
+        }
+
+        if (_amount > 0) {
+            pool.lpToken.safeTransferFrom(
+                address(msg.sender),
+                address(this),
+                _amount
+            );
+            user.amount = user.amount.add(_amount);
+        }
+
+        user.pendingReward = user.amount.mul(pool.rewardTokenPerShare).div(
+            1e12
+        );
+
+        emit Deposit(msg.sender, _pid, _amount);
+    }
+
+    function unstakePool(
+        uint256 _pid,
+        uint256 _amount
+    ) public validatePool(_pid) {
+        PoolInfo storage pool = s_poolInfo[_pid];
+        UserInfo storage user = s_userInfo[_pid][msg.sender];
+        updatePool(_pid);
+
+        if (user.amount > 0) {
+            uint256 pending = user
+                .amount
+                .mul(pool.rewardTokenPerShare)
+                .div(1e12)
+                .sub(user.pendingReward);
+            if (pending > 0) {
+                _safeTransfer(msg.sender, pending);
+            }
+        }
+
+        if (_amount > 0) {
+            user.amount = user.amount.sub(_amount);
+            pool.lpToken.safeTransfer(address(msg.sender), _amount);
+        }
+
+        user.pendingReward = user.amount.mul(pool.rewardTokenPerShare).div(
+            1e12
+        );
+
+        emit Withdraw(msg.sender, _pid, _amount);
+    }
+
+    function autoCompound() public {
+        PoolInfo storage pool = s_poolInfo[0];
+        UserInfo storage user = s_userInfo[0][msg.sender];
+    }
+
+    function pendingReward(
+        uint256 _pid,
+        address _user
+    ) external view returns (uint256) {
+        PoolInfo storage pool = s_poolInfo[_pid];
+        UserInfo storage user = s_userInfo[_pid][_user];
+        uint256 rewardTokenPerShare = pool.rewardTokenPerShare;
+        uint256 lpSupply = pool.lpToken.balanceOf(address(this));
+
+        if (block.number > pool.lastRewardBlock && lpSupply != 0) {
+            uint256 multiplier = getMultiplier(
+                pool.lastRewardBlock,
+                block.number
+            );
+
+            uint256 tokenReward = multiplier
+                .mul(s_rewardTokenPerBlock)
+                .mul(pool.allocPoint)
+                .div(s_totalAllocation);
+
+            rewardTokenPerShare = rewardTokenPerShare.add(
+                tokenReward.mul(1e12).div(lpSupply)
+            );
+        }
+        return
+            user.amount.mul(rewardTokenPerShare).div(1e12).sub(
+                user.pendingReward
+            );
+    }
+
     function poolLength() external view returns (uint256) {
         return s_poolInfo.length;
     }
@@ -194,5 +303,9 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
                 .add(points);
             s_poolInfo[0].allocPoint = points;
         }
+    }
+
+    function _safeTransfer(address _to, uint256 _amount) internal {
+        s_rewardToken.safeTransferToken(_to, _amount);
     }
 }
