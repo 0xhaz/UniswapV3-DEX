@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../token/RToken.sol";
 import "../library/SafeMath.sol";
+import "../library/MasterChefLibrary.sol";
 
 contract MasterChefV1 is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -103,28 +104,23 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
 
     function updatePool(uint256 _pid) public validatePool(_pid) {
         PoolInfo storage pool = s_poolInfo[_pid];
-        if (block.number <= pool.lastRewardBlock) {
-            return;
-        }
-        uint256 lpSupply = pool.lpToken.balanceOf(address(this));
-        if (lpSupply == 0) {
-            pool.lastRewardBlock = block.number;
-            return;
-        }
 
-        uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-
-        uint256 tokenReward = multiplier
-            .mul(s_rewardTokenPerBlock)
-            .mul(pool.allocPoint)
-            .div(s_totalAllocation);
-
-        s_rewardToken.mint(s_devAddress, tokenReward.div(10));
-        s_rewardToken.mint(address(this), tokenReward);
-        pool.rewardTokenPerShare = pool.rewardTokenPerShare.add(
-            tokenReward.mul(1e12).div(lpSupply)
+        uint256 tokenReward = MasterChefLibrary.calculateTokenReward(
+            pool.lastRewardBlock,
+            block.number,
+            s_rewardTokenPerBlock,
+            pool.allocPoint,
+            s_totalAllocation
         );
-        pool.lastRewardBlock = block.number;
+
+        if (tokenReward > 0) {
+            s_rewardToken.mint(s_devAddress, tokenReward.div(10));
+            s_rewardToken.mint(address(this), tokenReward);
+            pool.rewardTokenPerShare = pool.rewardTokenPerShare.add(
+                tokenReward.mul(1e12).div(pool.lpToken.balanceOf(address(this)))
+            );
+            pool.lastRewardBlock = block.number;
+        }
     }
 
     function massUpdatePools() public {
@@ -222,6 +218,32 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
     function autoCompound() public {
         PoolInfo storage pool = s_poolInfo[0];
         UserInfo storage user = s_userInfo[0][msg.sender];
+        if (user.amount > 0) {
+            uint256 pending = user
+                .amount
+                .mul(pool.rewardTokenPerShare)
+                .div(1e12)
+                .sub(user.pendingReward);
+            if (pending > 0) {
+                user.amount = user.amount.add(pending);
+            }
+        }
+        user.pendingReward = user.amount.mul(pool.rewardTokenPerShare).div(
+            1e12
+        );
+    }
+
+    function emergencyWithdraw(uint256 _pid) public {
+        PoolInfo storage pool = s_poolInfo[_pid];
+        UserInfo storage user = s_userInfo[_pid][msg.sender];
+        pool.lpToken.safeTransfer(address(msg.sender), user.amount);
+        emit EmergencyWithdraw(msg.sender, _pid, user.amount);
+        user.amount = 0;
+        user.pendingReward = 0;
+    }
+
+    function changeDev(address _dev) public onlyOwner {
+        s_devAddress = _dev;
     }
 
     function pendingReward(
@@ -234,7 +256,7 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
 
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
-            uint256 multiplier = getMultiplier(
+            uint256 multiplier = getBonusMultiplier(
                 pool.lastRewardBlock,
                 block.number
             );
@@ -262,17 +284,35 @@ contract MasterChefV1 is Ownable, ReentrancyGuard {
         return s_poolInfo[_pid];
     }
 
+    function getLPToken(uint256 _pid) public view returns (IERC20) {
+        return s_poolInfo[_pid].lpToken;
+    }
+
+    function getAllocPoint(uint256 _pid) public view returns (uint256) {
+        return s_poolInfo[_pid].allocPoint;
+    }
+
+    function getLastRewardBlock(uint256 _pid) public view returns (uint256) {
+        return s_poolInfo[_pid].lastRewardBlock;
+    }
+
+    function getRewardTokenPerShare(
+        uint256 _pid
+    ) public view returns (uint256) {
+        return s_poolInfo[_pid].rewardTokenPerShare;
+    }
+
     /**
      * @param _from  The start block
      * @param _to  The end block
      * @notice This function will calculate the reward token that will be minted
      */
 
-    function getMultiplier(
+    function getBonusMultiplier(
         uint256 _from,
         uint256 _to
     ) public view returns (uint256) {
-        return _to.sub(_from).mul(BONUS_MULTIPLIER);
+        return MasterChefLibrary.getMultiplier(_from, _to, BONUS_MULTIPLIER);
     }
 
     function updateMultiplier(uint256 _multiplierNumber) public onlyOwner {
